@@ -1,10 +1,17 @@
 defmodule Disassembler do
-  def disassemble("0" <> rest) do
+  def disassemble(path) do
+    File.stream!(path, :line)
+    |> Stream.map(&disassemble_instruction/1)
+  end
+
+  def disassemble_instruction("0" <> rest) do
     {int, ""} = Integer.parse(rest, 2)
     "@#{int}"
   end
 
-  def disassemble(<<"111", comp::binary-size(7), dest::binary-size(3), jmp::binary-size(3)>>) do
+  def disassemble_instruction(
+        <<"111", comp::binary-size(7), dest::binary-size(3), jmp::binary-size(3)>>
+      ) do
     dissassemble_dest(dest) <> disassemble_comp(comp) <> disassemble_jmp(jmp)
   end
 
@@ -62,60 +69,3 @@ defmodule Disassembler do
   defp get_register("0"), do: "A"
   defp get_register("1"), do: "M"
 end
-
-"""
-0011000000111001
-1110110000010000
-0101101110100000
-1110000111110000
-0000001111101011
-1110001100001000
-0000001111101100
-1110001110011000
-0000001111101000
-1111010011110000
-0000000000001110
-1110001100000100
-0000001111100111
-1111110111100000
-1110001100101000
-0000000000010101
-1110011111000010
-0000000000000010
-1110000010111000
-1111110111001000
-1111110010101000
-0000001111101000
-1110111010010000
-1110001100000001
-1110001100000010
-1110001100000011
-1110001100000100
-1110001100000101
-1110001100000110
-1110001100000111
-1110101010010000
-1110001100000001
-1110001100000010
-1110001100000011
-1110001100000100
-1110001100000101
-1110001100000110
-1110001100000111
-1110111111010000
-1110001100000001
-1110001100000010
-1110001100000011
-1110001100000100
-1110001100000101
-1110001100000110
-1110001100000111
-1110001100000111
-0111111111111111
-"""
-|> String.trim()
-|> String.split("\n")
-|> Enum.with_index(fn bin, index ->
-  Disassembler.disassemble(bin)
-  |> IO.inspect(label: bin <> " " <> (Integer.to_string(index) |> String.pad_leading(2, " ")))
-end)
