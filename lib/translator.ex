@@ -19,9 +19,34 @@ defmodule Translator do
     defp parse_line("lt"), do: {:comparison, :lt}
     defp parse_line("gt"), do: {:comparison, :gt}
 
-    defp parse_line("push constant " <> value) do
-      {num, ""} = Integer.parse(value)
-      {:push, :constant, num}
+    defp parse_line("push " <> rest) do
+      [type, num] = String.split(rest, " ")
+      type = get_reg_type(type)
+      {num, ""} = Integer.parse(num)
+      {:push, type, num}
+    end
+
+    defp parse_line("pop " <> rest) do
+      [type, num] = String.split(rest, " ")
+
+      type = get_reg_type(type)
+
+      {num, ""} = Integer.parse(num)
+
+      {:pop, type, num}
+    end
+
+    defp get_reg_type(type) do
+      case type do
+        "local" -> :local
+        "argument" -> :arg
+        "this" -> :this
+        "that" -> :that
+        "temp" -> :temp
+        "constant" -> :constant
+        "pointer" -> :pointer
+        "static" -> :static
+      end
     end
 
     defp line_empty?("//" <> _), do: true
@@ -30,8 +55,8 @@ defmodule Translator do
   end
 
   defmodule Writer do
-    def write!(stream) do
-      Stream.transform(stream, %{jumps: 0}, &write_op/2)
+    def write!(stream, static_name) do
+      Stream.transform(stream, %{jumps: 0, static_name: static_name}, &write_op/2)
     end
 
     defp write_op({:unary, op}, state) do
@@ -73,7 +98,38 @@ defmodule Translator do
         "D=A",
         "@SP",
         "A=M",
-        "M=D" | increment_sp()
+        "M=D"
+        | increment_sp()
+      ]
+
+      {ops, state}
+    end
+
+    defp write_op({:push, :temp, offset}, state) do
+      get_temp_reg(offset) |> push_aliased_register(state)
+    end
+
+    defp write_op({:push, :pointer, offset}, state) do
+      get_pointer_reg(offset) |> push_aliased_register(state)
+    end
+
+    defp write_op({:push, :static, offset}, state) do
+      get_static_reg(offset, state) |> push_aliased_register(state)
+    end
+
+    defp write_op({:push, type, offset}, state) do
+      reg = get_special_reg(type)
+
+      ops = [
+        reg,
+        "D=M",
+        "@#{offset}",
+        "A=D+A",
+        "D=M",
+        "@SP",
+        "A=M",
+        "M=D"
+        | increment_sp()
       ]
 
       {ops, state}
@@ -118,6 +174,45 @@ defmodule Translator do
       {ops, Map.update!(state, :jumps, &(&1 + 1))}
     end
 
+    defp write_op({:pop, :temp, offset}, state) do
+      get_temp_reg(offset) |> pop_aliased_register(state)
+    end
+
+    defp write_op({:pop, :pointer, offset}, state) do
+      get_pointer_reg(offset) |> pop_aliased_register(state)
+    end
+
+    defp write_op({:pop, :static, offset}, state) do
+      get_static_reg(offset, state) |> pop_aliased_register(state)
+    end
+
+    defp write_op({:pop, type, offset}, state) do
+      ops =
+        [
+          # save popped value to R13
+          "A=M",
+          "D=M",
+          "@R13",
+          "M=D",
+          # save dest address to R14
+          get_special_reg(type),
+          "D=M",
+          "@#{offset}",
+          "D=D+A",
+          "@R14",
+          "M=D",
+          # save R13 to *R14
+          "@R13",
+          "D=M",
+          "@R14",
+          "A=M",
+          "M=D"
+        ]
+        |> decrement_sp()
+
+      {ops, state}
+    end
+
     defp increment_sp() do
       [
         "@SP",
@@ -132,10 +227,51 @@ defmodule Translator do
         | rest
       ]
     end
+
+    defp get_pointer_reg(offset), do: "@R#{3 + offset}"
+    defp get_temp_reg(offset), do: "@R#{5 + offset}"
+    defp get_static_reg(offset, state), do: "@#{state[:static_name]}.#{offset}"
+
+    defp push_aliased_register(reg, state) do
+      ops = [
+        reg,
+        "D=M",
+        "@SP",
+        "A=M",
+        "M=D"
+        | increment_sp()
+      ]
+
+      {ops, state}
+    end
+
+    defp pop_aliased_register(reg, state) do
+      ops =
+        [
+          "A=M",
+          "D=M",
+          reg,
+          "M=D"
+        ]
+        |> decrement_sp()
+
+      {ops, state}
+    end
+
+    defp get_special_reg(type) do
+      case type do
+        :local -> "@LCL"
+        :arg -> "@ARG"
+        :this -> "@THIS"
+        :that -> "@THAT"
+      end
+    end
   end
 
   def translate(file) do
+    [static_name | _] = Path.basename(file) |> String.split(".")
+
     Parser.parse!(file)
-    |> Writer.write!()
+    |> Writer.write!(static_name)
   end
 end
