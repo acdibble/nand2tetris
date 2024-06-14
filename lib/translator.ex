@@ -2,7 +2,7 @@ defmodule Translator do
   defmodule Parser do
     def parse!(file) do
       File.stream!(file, :line)
-      |> Stream.map(&String.trim/1)
+      |> Stream.map(&remove_comments/1)
       |> Stream.reject(&line_empty?/1)
       |> Stream.map(&parse_line/1)
     end
@@ -36,6 +36,18 @@ defmodule Translator do
       {:pop, type, num}
     end
 
+    defp parse_line("label " <> label) do
+      {:label, label}
+    end
+
+    defp parse_line("if-goto " <> label) do
+      {:goto, :jne, label}
+    end
+
+    defp parse_line("goto " <> label) do
+      {:goto, :jmp, label}
+    end
+
     defp get_reg_type(type) do
       case type do
         "local" -> :local
@@ -49,7 +61,10 @@ defmodule Translator do
       end
     end
 
-    defp line_empty?("//" <> _), do: true
+    defp remove_comments(line) do
+      String.split(line, "//") |> Enum.at(0) |> String.trim()
+    end
+
     defp line_empty?(""), do: true
     defp line_empty?(_), do: false
   end
@@ -209,6 +224,31 @@ defmodule Translator do
           "M=D"
         ]
         |> decrement_sp()
+
+      {ops, state}
+    end
+
+    defp write_op({:label, label}, state), do: {["(" <> label <> ")"], state}
+
+    defp write_op({:goto, :jne, label}, state) do
+      ops =
+        [
+          "A=M",
+          "D=M",
+          "@#{label}",
+          "D;JNE"
+        ]
+        |> decrement_sp()
+
+      {ops, state}
+    end
+
+    defp write_op({:goto, :jmp, label}, state) do
+      ops =
+        [
+          "@#{label}",
+          "0;JMP"
+        ]
 
       {ops, state}
     end
