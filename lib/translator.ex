@@ -20,18 +20,18 @@ defmodule Translator do
     defp parse_line("gt"), do: {:comparison, :gt}
 
     defp parse_line("push " <> rest) do
-      [type, num] = String.split(rest, " ")
+      [type, num] = String.split(rest)
       type = get_reg_type(type)
-      {num, ""} = Integer.parse(num)
+      num = parse_int!(num)
       {:push, type, num}
     end
 
     defp parse_line("pop " <> rest) do
-      [type, num] = String.split(rest, " ")
+      [type, num] = String.split(rest)
 
       type = get_reg_type(type)
 
-      {num, ""} = Integer.parse(num)
+      num = parse_int!(num)
 
       {:pop, type, num}
     end
@@ -47,6 +47,16 @@ defmodule Translator do
     defp parse_line("goto " <> label) do
       {:goto, :jmp, label}
     end
+
+    defp parse_line("function " <> rest) do
+      [name, arity] = String.split(rest)
+
+      arity = parse_int!(arity)
+
+      {:function, name, arity}
+    end
+
+    defp parse_line("return"), do: :return
 
     defp get_reg_type(type) do
       case type do
@@ -67,11 +77,55 @@ defmodule Translator do
 
     defp line_empty?(""), do: true
     defp line_empty?(_), do: false
+
+    defp parse_int!(string, base \\ 10) do
+      {int, ""} = Integer.parse(string, base)
+      int
+    end
   end
 
   defmodule Writer do
+    defmodule Frame do
+      defstruct name: nil, jumps: 0, enclosing: nil, labels: []
+
+      def new(name) when is_binary(name) do
+        %Frame{name: name, jumps: 0, enclosing: nil}
+      end
+
+      def nest(frame = %Frame{}, name) do
+        %Frame{name: name, enclosing: frame}
+      end
+
+      def unnest(%Frame{enclosing: enclosing = %Frame{}}) do
+        enclosing
+      end
+
+      def inc_jumps(frame = %Frame{}) do
+        %Frame{frame | jumps: frame.jumps + 1}
+      end
+
+      def jump_labels(frame = %Frame{}) do
+        jump_count = Integer.to_string(frame.jumps)
+
+        {
+          frame.name <> "if_true_" <> jump_count,
+          frame.name <> "if_done_" <> jump_count,
+          inc_jumps(frame)
+        }
+      end
+
+      def label(frame = %Frame{}, name), do: frame.name <> "$" <> name
+    end
+
     def write!(stream, static_name) do
-      Stream.transform(stream, %{jumps: 0, static_name: static_name}, &write_op/2)
+      Stream.transform(
+        stream,
+        %{
+          static_name: static_name,
+          frame: Frame.new("global")
+        },
+        &write_op/2
+      )
     end
 
     defp write_op({:unary, op}, state) do
@@ -150,9 +204,8 @@ defmodule Translator do
       {ops, state}
     end
 
-    defp write_op({:comparison, type}, state) do
-      if_true = "jmp_if_true_#{state[:jumps]}"
-      done_label = "jmp_done_#{state[:jumps]}"
+    defp write_op({:comparison, type}, state = %{frame: frame}) do
+      {if_true, done, frame} = Frame.jump_labels(frame)
 
       jmp =
         case type do
@@ -168,13 +221,13 @@ defmodule Translator do
         "@SP",
         "A=M-1",
         "M=0",
-        "@" <> done_label,
+        "@" <> done,
         "0;JMP",
         "(" <> if_true <> ")",
         "@SP",
         "A=M-1",
         "M=-1",
-        "(" <> done_label <> ")"
+        "(" <> done <> ")"
       ]
 
       ops =
@@ -186,7 +239,7 @@ defmodule Translator do
         ]
         |> decrement_sp()
 
-      {ops, Map.update!(state, :jumps, &(&1 + 1))}
+      {ops, %{state | frame: frame}}
     end
 
     defp write_op({:pop, :temp, offset}, state) do
@@ -228,9 +281,16 @@ defmodule Translator do
       {ops, state}
     end
 
-    defp write_op({:label, label}, state), do: {["(" <> label <> ")"], state}
+    defp write_op({:label, label}, state) do
+      {
+        ["(" <> Frame.label(state[:frame], label) <> ")"],
+        state
+      }
+    end
 
     defp write_op({:goto, :jne, label}, state) do
+      label = Frame.label(state[:frame], label)
+
       ops =
         [
           "A=M",
@@ -244,11 +304,88 @@ defmodule Translator do
     end
 
     defp write_op({:goto, :jmp, label}, state) do
+      label = Frame.label(state[:frame], label)
+
       ops =
         [
           "@#{label}",
           "0;JMP"
         ]
+
+      {ops, state}
+    end
+
+    defp write_op({:function, name, _}, state) do
+      ops = [
+        "(" <> name <> ")"
+      ]
+
+      state = %{state | frame: Frame.nest(state[:frame], name)}
+      {ops, state}
+    end
+
+    defp write_op(:return, state) do
+      ops = [
+        # save LCL for late
+        "@LCL",
+        "D=M",
+        "@R13",
+        "M=D",
+        # save return address for later
+        "@5",
+        "A=D-A",
+        "D=M",
+        "@R14",
+        "M=D",
+        # move the return value to the callee's call stack
+        "@SP",
+        "A=M-1",
+        "D=M",
+        "@ARG",
+        "A=M",
+        "M=D",
+        # increment callee's call stack
+        "D=A+1",
+        "@SP",
+        "M=D",
+        # restore THAT
+        "@R13",
+        "A=M",
+        "A=A-1",
+        "D=M",
+        "@THAT",
+        "M=D",
+        # restore THIS
+        "@R13",
+        "D=M",
+        "@2",
+        "A=D-A",
+        "D=M",
+        "@THIS",
+        "M=D",
+        # restore ARG
+        "@R13",
+        "D=M",
+        "@3",
+        "A=D-A",
+        "D=M",
+        "@ARG",
+        "M=D",
+        # restore LCL
+        "@R13",
+        "D=M",
+        "@4",
+        "A=D-A",
+        "D=M",
+        "@LCL",
+        "M=D",
+        # jump back
+        "@R14",
+        "A=M",
+        "0;JMP"
+      ]
+
+      state = %{state | frame: Frame.unnest(state[:frame])}
 
       {ops, state}
     end
