@@ -100,18 +100,18 @@ defmodule Translator do
         %Frame{name: name, jumps: 0, enclosing: nil}
       end
 
-      def nest(frame = %Frame{}, name) do
+      def nest(%Frame{} = frame, name) do
         %Frame{name: name, enclosing: frame}
       end
 
-      def unnest(frame = %Frame{}) do
+      def unnest(%Frame{} = frame) do
         case frame.labels do
           [] -> frame.enclosing
           _ -> frame
         end
       end
 
-      def jump_labels(frame = %Frame{}) do
+      def jump_labels(%Frame{} = frame) do
         jump_count = Integer.to_string(frame.jumps)
 
         {
@@ -121,23 +121,23 @@ defmodule Translator do
         }
       end
 
-      def return_label(frame = %Frame{}, name) do
+      def return_label(%Frame{} = frame, name) do
         {
           label(frame, "return_" <> name <> "_" <> Integer.to_string(frame.returns)),
           Map.update!(frame, :returns, &(&1 + 1))
         }
       end
 
-      def label(frame = %Frame{}, name), do: frame.name <> "$" <> name
+      def label(%Frame{} = frame, name), do: frame.name <> "$" <> name
 
-      def track_label(frame = %Frame{}, name) do
+      def track_label(%Frame{} = frame, name) do
         {
           label(frame, name),
           %Frame{frame | labels: [name | frame.labels]}
         }
       end
 
-      def untrack_label(frame = %Frame{}, name) do
+      def untrack_label(%Frame{} = frame, name) do
         {
           label(frame, name),
           %Frame{frame | labels: Enum.reject(frame.labels, &(&1 == name))}
