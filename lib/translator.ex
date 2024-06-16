@@ -150,7 +150,7 @@ defmodule Translator do
         stream,
         %{
           static_name: static_name,
-          frame: Frame.new("global")
+          frame: Frame.new("global"),
         },
         &write_op/2
       )
@@ -165,7 +165,7 @@ defmodule Translator do
           case op do
             :not -> "M=!M"
             :neg -> "M=-M"
-          end
+          end,
         ]
 
       {ops, state}
@@ -182,7 +182,7 @@ defmodule Translator do
             :sub -> "M=M-D"
             :and -> "M=D&M"
             :or -> "M=D|M"
-          end
+          end,
         ]
         |> decrement_sp()
 
@@ -246,7 +246,7 @@ defmodule Translator do
         "@SP",
         "A=M-1",
         "M=-1",
-        "(" <> done <> ")"
+        "(" <> done <> ")",
       ]
 
       ops =
@@ -293,7 +293,7 @@ defmodule Translator do
           "D=M",
           "@R14",
           "A=M",
-          "M=D"
+          "M=D",
         ]
         |> decrement_sp()
 
@@ -317,7 +317,7 @@ defmodule Translator do
           "A=M",
           "D=M",
           "@#{label}",
-          "D;JNE"
+          "D;JNE",
         ]
         |> decrement_sp()
 
@@ -330,7 +330,7 @@ defmodule Translator do
       ops =
         [
           "@#{label}",
-          "0;JMP"
+          "0;JMP",
         ]
 
       {ops, %{state | frame: frame}}
@@ -347,7 +347,7 @@ defmodule Translator do
               "M=0"
               | increment_sp()
             ]
-          end)
+          end),
       ]
 
       state = %{state | frame: Frame.nest(state[:frame], name)}
@@ -413,7 +413,7 @@ defmodule Translator do
         # jump back
         "@R14",
         "A=M",
-        "0;JMP"
+        "0;JMP",
       ]
 
       state = %{state | frame: Frame.unnest(state[:frame])}
@@ -441,7 +441,7 @@ defmodule Translator do
             "M=D",
             "@" <> name,
             "0;JMP",
-            "(" <> return <> ")"
+            "(" <> return <> ")",
           ]
 
       {ops, Map.put(state, :frame, frame)}
@@ -461,7 +461,7 @@ defmodule Translator do
     defp increment_sp() do
       [
         "@SP",
-        "M=M+1"
+        "M=M+1",
       ]
     end
 
@@ -494,7 +494,7 @@ defmodule Translator do
           "A=M",
           "D=M",
           reg,
-          "M=D"
+          "M=D",
         ]
         |> decrement_sp()
 

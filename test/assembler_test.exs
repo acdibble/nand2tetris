@@ -33,7 +33,7 @@ defmodule AssemblerTest do
       {";JLT", "100"},
       {";JNE", "101"},
       {";JLE", "110"},
-      {";JMP", "111"}
+      {";JMP", "111"},
     ]
 
     dests = [
@@ -44,12 +44,12 @@ defmodule AssemblerTest do
       {"A=", "100"},
       {"AM=", "101"},
       {"AD=", "110"},
-      {"AMD=", "111"}
+      {"AMD=", "111"},
     ]
 
     ams = [
       {"A", "0"},
-      {"M", "1"}
+      {"M", "1"},
     ]
 
     for {jm, j} <- jmps, {dm, d} <- dests, {amm, am} <- ams do

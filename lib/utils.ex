@@ -1,4 +1,10 @@
 defmodule Utils do
+  defmacro __using__(_) do
+    quote do
+      def todo!(message \\ "todo"), do: raise(message)
+    end
+  end
+
   def remove_comments(line) do
     String.replace(line, ~r/\/\/.+/, "")
     |> String.replace(~r/\/\*.+?\*\//, "")
@@ -40,5 +46,11 @@ defmodule Utils do
       {:halt, enum} -> {enum, list}
       {:halt, enum, result} -> {enum, [result | list]}
     end
+  end
+
+  def readdir(dir, extension) do
+    File.ls!(dir)
+    |> Enum.filter(&String.ends_with?(&1, extension))
+    |> Enum.map(&Path.join(dir, &1))
   end
 end
