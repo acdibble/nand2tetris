@@ -1,7 +1,12 @@
 defmodule Compiler.Symbols do
   alias __MODULE__, as: Symbols
 
-  defstruct current_class: nil, classes: %{}, class_scope: %{}, method_scope: %{}, label: 0
+  defstruct current_class: nil,
+            current_method: nil,
+            classes: %{},
+            class_scope: %{},
+            method_scope: %{},
+            label: 0
 
   @os_classes %{
     "Array" => %{
@@ -74,25 +79,27 @@ defmodule Compiler.Symbols do
   def new(classes) do
     %Symbols{
       classes:
-        Enum.into(classes, %{}, fn {:class, class_name, fields, functions} ->
-          {
-            class_name,
-            Enum.into(
-              functions,
-              %{
-                size:
-                  Enum.reduce(fields, 0, fn
-                    {:field, _type, names}, acc -> acc + length(names)
-                    _, acc -> acc
-                  end),
-              },
-              fn {kind, name, type, _, _, _} ->
-                {name, {type, kind}}
-              end
-            )
-          }
-        end)
-        |> Map.merge(@os_classes),
+        Map.merge(
+          @os_classes,
+          Enum.into(classes, %{}, fn {:class, class_name, fields, functions} ->
+            {
+              class_name,
+              Enum.into(
+                functions,
+                %{
+                  size:
+                    Enum.reduce(fields, 0, fn
+                      {:field, _type, names}, acc -> acc + length(names)
+                      _, acc -> acc
+                    end),
+                },
+                fn {kind, name, type, _, _, _} ->
+                  {name, {type, kind}}
+                end
+              )
+            }
+          end)
+        ),
     }
   end
 
@@ -113,10 +120,16 @@ defmodule Compiler.Symbols do
         end)
       end)
 
-    %{symbols | current_class: name, class_scope: Map.merge(fields, statics), method_scope: %{}}
+    %{
+      symbols
+      | current_class: name,
+        class_scope: Map.merge(fields, statics),
+        method_scope: %{},
+        current_method: nil,
+    }
   end
 
-  def set_method(%Symbols{} = symbols, {type, _name, _return, params, locals, _stmts}) do
+  def set_method(%Symbols{} = symbols, {type, name, _return, params, locals, _stmts}) do
     offset = if(type == :method, do: 1, else: 0)
 
     args =
@@ -131,7 +144,7 @@ defmodule Compiler.Symbols do
         end)
       end)
 
-    %{symbols | method_scope: Map.merge(args, locals)}
+    %Symbols{symbols | method_scope: Map.merge(args, locals), current_method: name}
   end
 
   def get_method_type(%Symbols{} = symbols, method, nil) do
@@ -158,8 +171,9 @@ defmodule Compiler.Symbols do
     Map.get(symbols.method_scope, name) || Map.get(symbols.class_scope, name)
   end
 
-  def inc_label(%Symbols{} = symbols) do
-    {symbols.label, %Symbols{symbols | label: symbols.label + 1}}
+  def get_label(%Symbols{} = symbols) do
+    {"LABEL_#{symbols.current_class}.#{symbols.current_method}$#{symbols.label}",
+     %Symbols{symbols | label: symbols.label + 1}}
   end
 
   defp get_class_name(%Symbols{} = symbols, obj) do

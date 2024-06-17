@@ -16,7 +16,7 @@ defmodule Compiler.Writer do
     symbols = Symbols.set_method(symbols, fun)
 
     [
-      "function #{symbols.current_class}.#{name} #{locals_length(locals) + 1}",
+      "function #{symbols.current_class}.#{name} #{locals_length(locals)}",
       "push argument 0",
       "pop pointer 0"
       | Enum.flat_map_reduce(stmts, symbols, &write!/2) |> elem(0),
@@ -39,7 +39,7 @@ defmodule Compiler.Writer do
 
     [
       "function #{symbols.current_class}.#{name} #{locals_length(locals)}",
-      "push constant #{size}",
+      "push constant #{Integer.to_string(size)}",
       "call Memory.alloc 1",
       "pop pointer 0"
       | ops
@@ -188,10 +188,8 @@ defmodule Compiler.Writer do
   end
 
   def write!({:while, condition, stmts}, symbols) do
-    {cond_label, symbols} = Symbols.inc_label(symbols)
-    {done_label, symbols} = Symbols.inc_label(symbols)
-    cond_label = "LABEL_#{cond_label}"
-    done_label = "LABEL_#{done_label}"
+    {cond_label, symbols} = Symbols.get_label(symbols)
+    {done_label, symbols} = Symbols.get_label(symbols)
 
     {cond_ops, symbols} = write!(condition, symbols)
     {body_ops, symbols} = Enum.flat_map_reduce(stmts, symbols, &write!/2)
@@ -211,8 +209,7 @@ defmodule Compiler.Writer do
   end
 
   def write!({:if, condition, then, nil}, symbols) do
-    {done_label, symbols} = Symbols.inc_label(symbols)
-    done_label = "LABEL_#{done_label}"
+    {done_label, symbols} = Symbols.get_label(symbols)
 
     {cond_ops, symbols} = write!(condition, symbols)
     {then_ops, symbols} = Enum.flat_map_reduce(then, symbols, &write!/2)
@@ -230,10 +227,8 @@ defmodule Compiler.Writer do
   end
 
   def write!({:if, condition, then, otherwise}, symbols) do
-    {else_label, symbols} = Symbols.inc_label(symbols)
-    {done_label, symbols} = Symbols.inc_label(symbols)
-    else_label = "LABEL_#{else_label}"
-    done_label = "LABEL_#{done_label}"
+    {else_label, symbols} = Symbols.get_label(symbols)
+    {done_label, symbols} = Symbols.get_label(symbols)
 
     {cond_ops, symbols} = write!(condition, symbols)
     {then_ops, symbols} = Enum.flat_map_reduce(then, symbols, &write!/2)
