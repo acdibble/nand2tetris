@@ -79,7 +79,7 @@ class String {
     /** Returns the integer value of this string,
      *  until a non-digit character is detected. */
     method int intValue() {
-var int value, i, ch;
+        var int value, i, ch;
         var boolean negate;
 
         if (length = 0) {
